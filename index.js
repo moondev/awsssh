@@ -1,40 +1,75 @@
-var exec = require('child_process').exec;
-var Table = require('cli-table');
+#! /usr/bin/env node
+"use strict";
+var AWS = require('aws-sdk');
+var inquirer = require("inquirer");
+var Spinner = require('cli-spinner').Spinner;
+var spawn = require('child_process').spawn;
 
-var table = new Table({
-  head: ['Name', 'ID', 'Type', 'State', 'IP', 'Key Name', 'LuanchTime'],
-  chars: { 'top': '═' , 'top-mid': '╤' , 'top-left': '╔' , 'top-right': '╗'
-         , 'bottom': '═' , 'bottom-mid': '╧' , 'bottom-left': '╚' , 'bottom-right': '╝'
-         , 'left': '║' , 'left-mid': '╟' , 'mid': '─' , 'mid-mid': '┼'
-         , 'right': '║' , 'right-mid': '╢' , 'middle': '│' }
-});
+var reservations = [];
+var instances = [];
+var spinner = new Spinner('Loading Instances');
 
-
-console.log('grabbing instances...');
-
-function addRow(element){
-  var name = element.Instances[0].Tags[0].Value;
-  var id = element.Instances[0].InstanceId;
-  var type = element.Instances[0].InstanceType;
-  var state = element.Instances[0].State.Name;
-  var ip = element.Instances[0].PublicIpAddress;
-  var keyname = element.Instances[0].KeyName;
-  var launched = element.Instances[0].LaunchTime;
-  table.push(
-    [name, id, type, state, ip, keyname, launched]
-  );
+function findName(tags){
+  var name = false;
+  for(var i=0;i<tags.length;i++){
+    if(tags[i].Key == "Name"){
+      name = tags[i].Value;
+    }
+  }
+  return name;
 }
 
 function formatInstances(element, index, array) {
-  if(element.Instances[0].State.Name == 'running'){
-    addRow(element);
+  var instance = element.Instances[0];
+  if(instance.State.Name == 'running' && findName(instance.Tags)){
+    instances.push([
+      instance.InstanceId,
+      instance.PublicIpAddress,
+      instance.KeyName,
+      findName(instance.Tags),
+    ].join("\t"));
   }
 }
 
-function showInstances(error, stdout, stderr) {
-  instances = JSON.parse(stdout);
-  instances.Reservations.forEach(formatInstances);
-  console.log(table.toString());
+function listInstances(error, data) {
+  spinner.stop(true);
+  reservations = data.Reservations;
+  data.Reservations.forEach(formatInstances);
+  inquirer.prompt([
+    {
+      type: "list",
+      name: "instance",
+      message: "Select instance",
+      choices: instances
+    },
+    {
+      type: "list",
+      name: "ssh",
+      message: "SSH connection method",
+      choices: ['normal','iTerm2 tmux']
+    }
+  ], function(answers) {
+      var instance = answers.instance.split("\t");
+      var params = ['-i',process.env.HOME + '/.ssh/' + instance[2] + '.pem',"ubuntu@" + instance[1]];
+      if (answers.ssh == 'iTerm2 tmux'){
+        params.push('-t');
+        params.push('tmux -CC');
+      }
+      spawn("ssh", params, { stdio: 'inherit' });
+    });
 }
 
-exec("aws ec2 describe-instances",showInstances);
+function loadInstances(){
+  spinner.start();
+  new AWS.EC2().describeInstances(listInstances);
+}
+
+inquirer.prompt([{
+  type: "list",
+  name: "region",
+  message: "Select region",
+  choices: ['us-east-1','us-west-1','us-west-2']
+}], function(ans) {
+  AWS.config.update({region: ans.region});
+  loadInstances();
+});
