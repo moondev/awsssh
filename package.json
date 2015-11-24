@@ -1,0 +1,19 @@
+{
+  "name": "awsssh",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/moondev/awsssh.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/moondev/awsssh/issues"
+  },
+  "homepage": "https://github.com/moondev/awsssh#readme"
+}
